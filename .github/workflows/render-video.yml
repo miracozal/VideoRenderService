@@ -2,8 +2,10 @@ name: Render Video
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 * * * *"
+    inputs:
+      imageUrl:
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -13,18 +15,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Create sample image
+      - name: Download image
         run: |
           mkdir -p assets
-          convert -size 1080x1920 xc:black assets/image.jpg
+          curl -L "${{ github.event.inputs.imageUrl }}" -o assets/image.jpg
 
       - name: Render video
         run: |
@@ -34,12 +35,12 @@ jobs:
             -loop 1 \
             -i assets/image.jpg \
             -t 8 \
-            -vf "format=yuv420p" \
+            -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p" \
             -r 30 \
             -c:v libx264 \
             public/latest.mp4
 
-      - name: Create json manifest
+      - name: Create manifest
         run: |
           echo "{\"videoUrl\":\"https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/latest.mp4\"}" > public/latest.json
 
