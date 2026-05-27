@@ -21,7 +21,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install FFmpeg
         run: |
@@ -33,6 +34,35 @@ jobs:
           mkdir -p assets
           curl -L "${{ github.event.inputs.imageUrl }}" -o assets/image.jpg
 
+          file assets/image.jpg
+
+      - name: Select music by market
+        run: |
+          MARKET="${{ github.event.inputs.market }}"
+          MARKET=$(echo "$MARKET" | tr '[:upper:]' '[:lower:]')
+
+          if [ "$MARKET" = "a101" ]; then
+            MUSIC=$(find Assets/Musics -iname "*a101*.mp3" | head -n 1)
+          elif [ "$MARKET" = "bim" ]; then
+            MUSIC=$(find Assets/Musics -iname "*bim*.mp3" | head -n 1)
+          elif [ "$MARKET" = "sok" ] || [ "$MARKET" = "şok" ]; then
+            MUSIC=$(find Assets/Musics -iname "*sok*.mp3" | head -n 1)
+          else
+            MUSIC=$(find Assets/Musics -iname "*kontraa*.mp3" | head -n 1)
+          fi
+
+          if [ -z "$MUSIC" ]; then
+            MUSIC=$(find Assets/Musics -iname "*.mp3" | head -n 1)
+          fi
+
+          if [ -z "$MUSIC" ]; then
+            echo "MP3 bulunamadı."
+            exit 1
+          fi
+
+          echo "MUSIC=$MUSIC" >> $GITHUB_ENV
+          echo "Selected music: $MUSIC"
+
       - name: Render video
         run: |
           mkdir -p public
@@ -40,15 +70,21 @@ jobs:
           ffmpeg -y \
             -loop 1 \
             -i assets/image.jpg \
+            -i "$MUSIC" \
             -t "${{ github.event.inputs.durationSeconds }}" \
-            -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p" \
+            -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:1[bg];[0:v]scale=900:-1:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]" \
+            -map "[v]" \
+            -map 1:a \
             -r 30 \
             -c:v libx264 \
+            -c:a aac \
+            -shortest \
+            -movflags +faststart \
             public/latest.mp4
 
       - name: Create manifest
         run: |
-          echo "{\"videoUrl\":\"https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/latest.mp4\",\"market\":\"${{ github.event.inputs.market }}\"}" > public/latest.json
+          echo "{\"videoUrl\":\"https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/latest.mp4\",\"market\":\"${{ github.event.inputs.market }}\",\"durationSeconds\":${{ github.event.inputs.durationSeconds }},\"createdAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > public/latest.json
 
       - name: Deploy GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
