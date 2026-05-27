@@ -12,7 +12,10 @@ on:
       durationSeconds:
         required: true
         type: string
-
+      requestId:
+        required: true
+        type: string
+        
 permissions:
   contents: write
 
@@ -64,28 +67,40 @@ jobs:
           echo "Selected music: $MUSIC"
 
       - name: Render video
-        run: |
-          mkdir -p public
+          run: |
+            mkdir -p public/videos
+            mkdir -p public/manifests
 
-          ffmpeg -y \
-            -loop 1 \
-            -i assets/image.jpg \
-            -i "$MUSIC" \
-            -t "${{ github.event.inputs.durationSeconds }}" \
-            -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:1[bg];[0:v]scale=900:-1:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]" \
-            -map "[v]" \
-            -map 1:a \
-            -r 30 \
-            -c:v libx264 \
-            -c:a aac \
-            -shortest \
-            -movflags +faststart \
-            public/latest.mp4
+            REQUEST_ID="${{ github.event.inputs.requestId }}"
+
+            OUTPUT_FILE="public/videos/$REQUEST_ID.mp4"
+
+            ffmpeg -y \
+              -loop 1 \
+              -i assets/image.jpg \
+              -i "$MUSIC" \
+              -t "${{ github.event.inputs.durationSeconds }}" \
+              -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:1[bg];[0:v]scale=900:-1:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]" \
+              -map "[v]" \
+              -map 1:a \
+              -r 30 \
+              -c:v libx264 \
+              -c:a aac \
+              -shortest \
+              -movflags +faststart \
+              "$OUTPUT_FILE"
 
       - name: Create manifest
-        run: |
-          echo "{\"videoUrl\":\"https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/latest.mp4\",\"market\":\"${{ github.event.inputs.market }}\",\"durationSeconds\":${{ github.event.inputs.durationSeconds }},\"createdAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > public/latest.json
+          run: |
+            REQUEST_ID="${{ github.event.inputs.requestId }}"
 
+            echo "{
+              \"requestId\":\"$REQUEST_ID\",
+              \"videoUrl\":\"https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/videos/$REQUEST_ID.mp4\",
+              \"market\":\"${{ github.event.inputs.market }}\",
+              \"createdAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }" > "public/manifests/$REQUEST_ID.json"
+    
       - name: Deploy GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
