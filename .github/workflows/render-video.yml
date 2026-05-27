@@ -6,6 +6,12 @@ on:
       imageUrl:
         required: true
         type: string
+      market:
+        required: true
+        type: string
+      durationSeconds:
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -34,7 +40,7 @@ jobs:
           ffmpeg -y \
             -loop 1 \
             -i assets/image.jpg \
-            -t 8 \
+            -t "${{ github.event.inputs.durationSeconds }}" \
             -vf "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p" \
             -r 30 \
             -c:v libx264 \
@@ -42,7 +48,7 @@ jobs:
 
       - name: Create manifest
         run: |
-          echo "{\"videoUrl\":\"https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/latest.mp4\"}" > public/latest.json
+          echo "{\"videoUrl\":\"https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/latest.mp4\",\"market\":\"${{ github.event.inputs.market }}\"}" > public/latest.json
 
       - name: Deploy GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
