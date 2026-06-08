@@ -234,17 +234,17 @@ public sealed class VideoRenderer
             "-i", audioPath,
             "-t", durationSeconds.ToString(),
             "-filter_complex",
-            "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:1[bg];" +
-            "[0:v]scale=900:1600:force_original_aspect_ratio=decrease[fg];" +
-            "[bg][fg]overlay=(W-w)/2:(H-h)/2," +
-            "zoompan=z='min(zoom+0.0007,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30," +
-            "format=yuv420p[v]",
+            "color=c=0xF3F4F6:s=1080x1920:r=30[canvas];" +
+            "[0:v]scale=900:1400:force_original_aspect_ratio=decrease:flags=lanczos," +
+            "unsharp=5:5:0.45:5:5:0.0," +
+            "pad=960:1460:(ow-iw)/2:(oh-ih)/2:color=white[card];" +
+            "[canvas][card]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[v]",
             "-map", "[v]",
             "-map", "1:a",
             "-r", "30",
             "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "20",
+            "-preset", "medium",
+            "-crf", "18",
             "-profile:v", "high",
             "-level", "4.1",
             "-c:a", "aac",

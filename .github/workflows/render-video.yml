@@ -78,6 +78,32 @@ jobs:
           python3 scripts/download_image.py "$IMAGE_URL" assets/image
           file assets/image
 
+      - name: Inspect source image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IMAGE_DIMENSIONS=$(ffprobe -v error \
+            -select_streams v:0 \
+            -show_entries stream=width,height \
+            -of csv=s=x:p=0 \
+            assets/image)
+
+          IFS=x read -r IMAGE_WIDTH IMAGE_HEIGHT <<< "$IMAGE_DIMENSIONS"
+
+          if [[ ! "$IMAGE_WIDTH" =~ ^[0-9]+$ ]] || [[ ! "$IMAGE_HEIGHT" =~ ^[0-9]+$ ]]; then
+            echo "Could not determine source image dimensions."
+            exit 1
+          fi
+
+          echo "IMAGE_WIDTH=$IMAGE_WIDTH" >> "$GITHUB_ENV"
+          echo "IMAGE_HEIGHT=$IMAGE_HEIGHT" >> "$GITHUB_ENV"
+          echo "Source image: ${IMAGE_WIDTH}x${IMAGE_HEIGHT}"
+
+          if (( IMAGE_WIDTH < 600 || IMAGE_HEIGHT < 600 )); then
+            echo "::warning::Source image is only ${IMAGE_WIDTH}x${IMAGE_HEIGHT}. For a sharp Reels video, use an image at least 1080px wide and 1080px high."
+          fi
+
       - name: Select music by market
         shell: bash
         run: |
@@ -119,13 +145,13 @@ jobs:
             -i assets/image \
             -i "$MUSIC" \
             -t "$DURATION_SECONDS" \
-            -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:1[bg];[0:v]scale=900:1600:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,zoompan=z='min(zoom+0.0007,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,format=yuv420p[v]" \
+            -filter_complex "color=c=0xF3F4F6:s=1080x1920:r=30[canvas];[0:v]scale=900:1400:force_original_aspect_ratio=decrease:flags=lanczos,unsharp=5:5:0.45:5:5:0.0,pad=960:1460:(ow-iw)/2:(oh-ih)/2:color=white[card];[canvas][card]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[v]" \
             -map "[v]" \
             -map 1:a \
             -r 30 \
             -c:v libx264 \
-            -preset veryfast \
-            -crf 20 \
+            -preset medium \
+            -crf 18 \
             -profile:v high \
             -level 4.1 \
             -c:a aac \
@@ -152,8 +178,10 @@ jobs:
             --arg requestId "$REQUEST_ID" \
             --arg videoUrl "$VIDEO_URL" \
             --arg market "$MARKET" \
+            --argjson sourceWidth "$IMAGE_WIDTH" \
+            --argjson sourceHeight "$IMAGE_HEIGHT" \
             --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{requestId: $requestId, videoUrl: $videoUrl, market: $market, createdAt: $createdAt}' \
+            '{requestId: $requestId, videoUrl: $videoUrl, market: $market, sourceWidth: $sourceWidth, sourceHeight: $sourceHeight, createdAt: $createdAt}' \
             > "public/manifests/$REQUEST_ID.json"
 
       - name: Deploy GitHub Pages
