@@ -20,6 +20,16 @@ on:
         description: Unique output identifier
         required: true
         type: string
+      productName:
+        description: Product name used in the Instagram caption
+        required: false
+        default: ""
+        type: string
+      price:
+        description: Optional product price used in the Instagram caption
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -37,6 +47,8 @@ jobs:
       MARKET: ${{ inputs.market }}
       DURATION_SECONDS: ${{ inputs.durationSeconds }}
       REQUEST_ID: ${{ inputs.requestId }}
+      PRODUCT_NAME: ${{ inputs.productName }}
+      PRICE: ${{ inputs.price }}
 
     steps:
       - name: Checkout
@@ -60,6 +72,16 @@ jobs:
 
           if (( ${#MARKET} > 30 )); then
             echo "market may contain at most 30 characters."
+            exit 1
+          fi
+
+          if (( ${#PRODUCT_NAME} > 150 )); then
+            echo "productName may contain at most 150 characters."
+            exit 1
+          fi
+
+          if (( ${#PRICE} > 30 )); then
+            echo "price may contain at most 30 characters."
             exit 1
           fi
 
@@ -174,14 +196,44 @@ jobs:
         run: |
           set -euo pipefail
 
+          case "$(printf '%s' "$MARKET" | tr '[:upper:]' '[:lower:]')" in
+            a101)
+              MARKET_LABEL="A101"
+              HASHTAGS="#A101 #AldınAldın #İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
+              ;;
+            bim)
+              MARKET_LABEL="BİM"
+              HASHTAGS="#BİM #İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
+              ;;
+            sok|şok)
+              MARKET_LABEL="ŞOK"
+              HASHTAGS="#ŞOK #İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
+              ;;
+            *)
+              MARKET_LABEL="${MARKET:-Market}"
+              HASHTAGS="#İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
+              ;;
+          esac
+
+          if [[ -n "$PRODUCT_NAME" && -n "$PRICE" ]]; then
+            CAPTION=$(printf "🔥 %s'de kaçırılmayacak fırsat!\n\n%s sadece %s.\n\n🛒 Stoklarla sınırlıdır.\n\n%s" "$MARKET_LABEL" "$PRODUCT_NAME" "$PRICE" "$HASHTAGS")
+          elif [[ -n "$PRODUCT_NAME" ]]; then
+            CAPTION=$(printf "🔥 %s'de fırsat zamanı!\n\n%s raflarda seni bekliyor.\n\n🛒 Stoklarla sınırlıdır.\n\n%s" "$MARKET_LABEL" "$PRODUCT_NAME" "$HASHTAGS")
+          else
+            CAPTION=$(printf "🔥 %s'de fırsat zamanı!\n\n🛒 Stoklarla sınırlıdır.\n\n%s" "$MARKET_LABEL" "$HASHTAGS")
+          fi
+
           jq -n \
             --arg requestId "$REQUEST_ID" \
             --arg videoUrl "$VIDEO_URL" \
             --arg market "$MARKET" \
+            --arg productName "$PRODUCT_NAME" \
+            --arg price "$PRICE" \
+            --arg caption "$CAPTION" \
             --argjson sourceWidth "$IMAGE_WIDTH" \
             --argjson sourceHeight "$IMAGE_HEIGHT" \
             --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{requestId: $requestId, videoUrl: $videoUrl, market: $market, sourceWidth: $sourceWidth, sourceHeight: $sourceHeight, createdAt: $createdAt}' \
+            '{requestId: $requestId, videoUrl: $videoUrl, market: $market, productName: $productName, price: $price, caption: $caption, sourceWidth: $sourceWidth, sourceHeight: $sourceHeight, createdAt: $createdAt}' \
             > "public/manifests/$REQUEST_ID.json"
 
       - name: Deploy GitHub Pages

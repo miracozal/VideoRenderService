@@ -8,3 +8,20 @@ Content-Type: application/json
   "market": "a101",
   "durationSeconds": 10
 }
+
+###
+
+# GitHub Actions workflow dispatch body:
+# POST https://api.github.com/repos/miracozal/VideoRenderService/actions/workflows/render-video.yml/dispatches
+#
+# {
+#   "ref": "main",
+#   "inputs": {
+#     "imageUrl": "https://example.com/product.jpg",
+#     "market": "a101",
+#     "durationSeconds": "10",
+#     "requestId": "a101-product-001",
+#     "productName": "Froland Kıymalı Kol Böreği 500 g",
+#     "price": "89,50 TL"
+#   }
+# }
