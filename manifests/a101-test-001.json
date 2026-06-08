@@ -2,7 +2,7 @@
   "requestId": "a101-test-001",
   "videoUrl": "https://miracozal.github.io/VideoRenderService/videos/a101-test-001.mp4",
   "market": "a101",
-  "sourceWidth": 256,
-  "sourceHeight": 256,
-  "createdAt": "2026-06-08T19:24:46Z"
+  "sourceWidth": 1080,
+  "sourceHeight": 1920,
+  "createdAt": "2026-06-08T19:26:10Z"
 }
