@@ -1,9 +1,16 @@
-﻿namespace VideoRenderService.Models
+using System.ComponentModel.DataAnnotations;
+
+namespace VideoRenderService.Models;
+
+public sealed class VideoRenderRequest
 {
-    public sealed class VideoRenderRequest
-    {
-        public string ImageUrl { get; set; } = null!;
-        public string? Market { get; set; }
-        public int DurationSeconds { get; set; } = 10;
-    }
+    [Required]
+    [Url]
+    public string ImageUrl { get; set; } = null!;
+
+    [StringLength(30)]
+    public string? Market { get; set; }
+
+    [Range(3, 30)]
+    public int DurationSeconds { get; set; } = 10;
 }

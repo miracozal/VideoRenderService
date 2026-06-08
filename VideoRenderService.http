@@ -1,6 +1,10 @@
 @VideoRenderService_HostAddress = http://localhost:5036
 
-GET {{VideoRenderService_HostAddress}}/weatherforecast/
-Accept: application/json
+POST {{VideoRenderService_HostAddress}}/api/video-render
+Content-Type: application/json
 
-###
+{
+  "imageUrl": "https://example.com/product.jpg",
+  "market": "a101",
+  "durationSeconds": 10
+}

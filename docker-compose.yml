@@ -5,6 +5,8 @@ services:
     build: .
     container_name: video-render-service
     restart: always
+    environment:
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
     expose:
       - "8080"
 
