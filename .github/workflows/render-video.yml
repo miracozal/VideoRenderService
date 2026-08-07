@@ -153,6 +153,54 @@ jobs:
           echo "MUSIC=$MUSIC" >> "$GITHUB_ENV"
           echo "Selected music: $MUSIC"
 
+      - name: Prepare social overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import os
+          import textwrap
+          from pathlib import Path
+
+          market = os.environ.get("MARKET", "").strip().lower()
+          product = " ".join(os.environ.get("PRODUCT_NAME", "").split())
+          price = " ".join(os.environ.get("PRICE", "").split())
+
+          market_labels = {
+              "a101": "A101",
+              "bim": "BİM",
+              "sok": "ŞOK",
+              "şok": "ŞOK",
+          }
+          accent_colors = {
+              "a101": "0xE31E24",
+              "bim": "0xF2C300",
+              "sok": "0xF5C400",
+              "şok": "0xF5C400",
+          }
+
+          wrapped_product = textwrap.TextWrapper(
+              width=29,
+              max_lines=3,
+              placeholder="…",
+              break_long_words=False,
+              break_on_hyphens=False,
+          ).fill(product or "Öne çıkan kampanyalı ürün")
+
+          assets = Path("assets")
+          assets.mkdir(exist_ok=True)
+          (assets / "market.txt").write_text(
+              market_labels.get(market, "MARKET FIRSATI"), encoding="utf-8")
+          (assets / "product_name.txt").write_text(
+              wrapped_product, encoding="utf-8")
+          (assets / "price.txt").write_text(
+              price or "Güncel fiyatı inceleyin", encoding="utf-8")
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"ACCENT_COLOR={accent_colors.get(market, '0x20C997')}\n")
+          PY
+
       - name: Render Reels video
         shell: bash
         run: |
@@ -167,7 +215,7 @@ jobs:
             -i assets/image \
             -i "$MUSIC" \
             -t "$DURATION_SECONDS" \
-            -filter_complex "color=c=0xF3F4F6:s=1080x1920:r=30[canvas];[0:v]scale=900:1400:force_original_aspect_ratio=decrease:flags=lanczos,unsharp=5:5:0.45:5:5:0.0,pad=960:1460:(ow-iw)/2:(oh-ih)/2:color=white[card];[canvas][card]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[v]" \
+            -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,gblur=sigma=38,eq=brightness=-0.42:saturation=0.72[background];[background]drawbox=x=0:y=0:w=1080:h=1920:color=0x07111F@0.62:t=fill,drawbox=x=70:y=430:w=940:h=900:color=white@0.98:t=fill,drawbox=x=70:y=430:w=940:h=12:color=${ACCENT_COLOR}:t=fill[base];[0:v]scale=820:790:force_original_aspect_ratio=decrease:flags=lanczos,unsharp=5:5:0.55:5:5:0.0,pad=860:820:(ow-iw)/2:(oh-ih)/2:color=white[product];[base][product]overlay=(W-w)/2:475:shortest=1,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='İNDİRİM SERVİSİ':fontcolor=white:fontsize=36:x=70:y=92:box=1:boxcolor=0xFFFFFF@0.12:boxborderw=18,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GÜNÜN ÖNE ÇIKAN FIRSATI':fontcolor=white:fontsize=55:x=70:y=205,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile=assets/market.txt:fontcolor=${ACCENT_COLOR}:fontsize=48:x=70:y=305,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile=assets/product_name.txt:fontcolor=white:fontsize=45:line_spacing=14:x=(w-text_w)/2:y=1370,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile=assets/price.txt:fontcolor=0x07111F:fontsize=68:x=(w-text_w)/2:y=1585:box=1:boxcolor=${ACCENT_COLOR}@0.98:boxborderw=24,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='Kampanya ve stok bilgileri mağazaya göre değişebilir.':fontcolor=white@0.84:fontsize=27:x=(w-text_w)/2:y=1792,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='indirimservisi.com':fontcolor=white:fontsize=34:x=(w-text_w)/2:y=1845,fade=t=in:st=0:d=0.45,fade=t=out:st=9.4:d=0.6,format=yuv420p[v]" \
             -map "[v]" \
             -map 1:a \
             -r 30 \
@@ -216,11 +264,11 @@ jobs:
           esac
 
           if [[ -n "$PRODUCT_NAME" && -n "$PRICE" ]]; then
-            CAPTION=$(printf "🔥 %s'de kaçırılmayacak fırsat!\n\n%s sadece %s.\n\n🛒 Stoklarla sınırlıdır.\n\n%s" "$MARKET_LABEL" "$PRODUCT_NAME" "$PRICE" "$HASHTAGS")
+            CAPTION=$(printf "✨ Günün Öne Çıkan Fırsatı\n\n🛒 %s\n%s\n✨ Fiyat: %s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\nBeğendiysen kaydetmeyi ve alışveriş listene eklemeyi unutma.\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$PRICE" "$HASHTAGS")
           elif [[ -n "$PRODUCT_NAME" ]]; then
-            CAPTION=$(printf "🔥 %s'de fırsat zamanı!\n\n%s raflarda seni bekliyor.\n\n🛒 Stoklarla sınırlıdır.\n\n%s" "$MARKET_LABEL" "$PRODUCT_NAME" "$HASHTAGS")
+            CAPTION=$(printf "✨ Günün Öne Çıkan Fırsatı\n\n🛒 %s\n%s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$HASHTAGS")
           else
-            CAPTION=$(printf "🔥 %s'de fırsat zamanı!\n\n🛒 Stoklarla sınırlıdır.\n\n%s" "$MARKET_LABEL" "$HASHTAGS")
+            CAPTION=$(printf "✨ %s için öne çıkan fırsat\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\n#İndirimServisi %s" "$MARKET_LABEL" "$HASHTAGS")
           fi
 
           jq -n \
