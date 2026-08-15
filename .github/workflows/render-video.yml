@@ -237,10 +237,32 @@ jobs:
             -of default=noprint_wrappers=1 \
             "$OUTPUT_FILE"
 
+      - name: Create Reels cover
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public/covers
+
+          # Instagram otherwise tends to use the first, still-dark fade frame.
+          # The one-second frame contains the complete product and price card.
+          ffmpeg -nostdin -y \
+            -ss 1 \
+            -i "public/videos/$REQUEST_ID.mp4" \
+            -frames:v 1 \
+            -q:v 2 \
+            "public/covers/$REQUEST_ID.jpg"
+
+          ffprobe -v error \
+            -select_streams v:0 \
+            -show_entries stream=codec_name,width,height \
+            -of default=noprint_wrappers=1 \
+            "public/covers/$REQUEST_ID.jpg"
+
       - name: Create manifest
         shell: bash
         env:
           VIDEO_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/videos/${{ inputs.requestId }}.mp4
+          COVER_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/covers/${{ inputs.requestId }}.jpg
         run: |
           set -euo pipefail
 
@@ -274,6 +296,7 @@ jobs:
           jq -n \
             --arg requestId "$REQUEST_ID" \
             --arg videoUrl "$VIDEO_URL" \
+            --arg coverUrl "$COVER_URL" \
             --arg market "$MARKET" \
             --arg productName "$PRODUCT_NAME" \
             --arg price "$PRICE" \
@@ -281,7 +304,7 @@ jobs:
             --argjson sourceWidth "$IMAGE_WIDTH" \
             --argjson sourceHeight "$IMAGE_HEIGHT" \
             --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{requestId: $requestId, videoUrl: $videoUrl, market: $market, productName: $productName, price: $price, caption: $caption, sourceWidth: $sourceWidth, sourceHeight: $sourceHeight, createdAt: $createdAt}' \
+            '{requestId: $requestId, videoUrl: $videoUrl, coverUrl: $coverUrl, market: $market, productName: $productName, price: $price, caption: $caption, sourceWidth: $sourceWidth, sourceHeight: $sourceHeight, createdAt: $createdAt}' \
             > "public/manifests/$REQUEST_ID.json"
 
       - name: Deploy GitHub Pages
