@@ -13,6 +13,8 @@ MAX_BYTES = 10 * 1024 * 1024
 MAX_REDIRECTS = 5
 MAX_ATTEMPTS = 4
 
+SCRIPT_VERSION = "2.0"
+
 RETRYABLE_HTTP_CODES = {
     403,
     408,
@@ -33,7 +35,9 @@ def validate_public_url(url: str) -> None:
     parsed = urllib.parse.urlparse(url)
 
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise ValueError("Image URL must use HTTP or HTTPS.")
+        raise ValueError(
+            "Image URL must use HTTP or HTTPS."
+        )
 
     try:
         results = socket.getaddrinfo(
@@ -51,7 +55,9 @@ def validate_public_url(url: str) -> None:
         )
 
     for result in results:
-        address = ipaddress.ip_address(result[4][0])
+        address = ipaddress.ip_address(
+            result[4][0]
+        )
 
         if not address.is_global:
             raise ValueError(
@@ -59,7 +65,9 @@ def validate_public_url(url: str) -> None:
             )
 
 
-class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+class SafeRedirectHandler(
+    urllib.request.HTTPRedirectHandler
+):
     def __init__(self) -> None:
         super().__init__()
         self.redirects = 0
@@ -99,11 +107,15 @@ def looks_like_image(data: bytes) -> bool:
         return True
 
     # PNG
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+    if data.startswith(
+        b"\x89PNG\r\n\x1a\n"
+    ):
         return True
 
     # GIF
-    if data.startswith((b"GIF87a", b"GIF89a")):
+    if data.startswith(
+        (b"GIF87a", b"GIF89a")
+    ):
         return True
 
     # BMP
@@ -111,7 +123,9 @@ def looks_like_image(data: bytes) -> bool:
         return True
 
     # TIFF
-    if data.startswith((b"II*\x00", b"MM\x00*")):
+    if data.startswith(
+        (b"II*\x00", b"MM\x00*")
+    ):
         return True
 
     # WEBP
@@ -123,8 +137,10 @@ def looks_like_image(data: bytes) -> bool:
         return True
 
     # AVIF / HEIF
-    if len(data) >= 16 and data[4:8] == b"ftyp":
-
+    if (
+        len(data) >= 16
+        and data[4:8] == b"ftyp"
+    ):
         known_brands = (
             b"avif",
             b"avis",
@@ -157,15 +173,14 @@ def safe_preview(data: bytes) -> str:
         errors="replace"
     )
 
-    return " ".join(text.split())[:240]
+    return " ".join(
+        text.split()
+    )[:240]
 
 
-def download_once(
-    url: str,
-    output_path: str
-) -> None:
-
-    validate_public_url(url)
+def build_request(
+    url: str
+) -> urllib.request.Request:
 
     parsed = urllib.parse.urlparse(url)
 
@@ -173,11 +188,7 @@ def download_once(
         f"{parsed.scheme}://{parsed.netloc}/"
     )
 
-    opener = urllib.request.build_opener(
-        SafeRedirectHandler()
-    )
-
-    request = urllib.request.Request(
+    return urllib.request.Request(
         url,
         headers={
             "User-Agent": (
@@ -197,8 +208,11 @@ def download_once(
                 "*/*;q=0.8"
             ),
 
-            "Accept-Language":
-                "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Language": (
+                "tr-TR,tr;q=0.9,"
+                "en-US;q=0.8,"
+                "en;q=0.7"
+            ),
 
             "Cache-Control":
                 "no-cache",
@@ -211,7 +225,23 @@ def download_once(
         },
     )
 
-    temp_path = output_path + ".part"
+
+def download_once(
+    url: str,
+    output_path: str
+) -> None:
+
+    validate_public_url(url)
+
+    opener = urllib.request.build_opener(
+        SafeRedirectHandler()
+    )
+
+    request = build_request(url)
+
+    temp_path = (
+        output_path + ".part"
+    )
 
     try:
 
@@ -230,22 +260,32 @@ def download_once(
 
             content_type = (
                 response.headers
-                .get("Content-Type", "")
-                .split(";", 1)[0]
+                .get(
+                    "Content-Type",
+                    ""
+                )
+                .split(
+                    ";",
+                    1
+                )[0]
                 .strip()
                 .lower()
             )
 
-            content_length = response.headers.get(
-                "Content-Length"
+            content_length = (
+                response.headers.get(
+                    "Content-Length"
+                )
             )
 
             print(
-                "Image response:"
-                f" status={status},"
-                f" content-type={content_type or 'unknown'},"
-                f" content-length={content_length or 'unknown'},"
-                f" final-url={final_url}"
+                "Image response: "
+                f"status={status}, "
+                f"content-type="
+                f"{content_type or 'unknown'}, "
+                f"content-length="
+                f"{content_length or 'unknown'}, "
+                f"final-url={final_url}"
             )
 
             if content_length:
@@ -258,14 +298,17 @@ def download_once(
                     declared_size = None
 
                 if (
-                    declared_size is not None
-                    and declared_size > MAX_BYTES
+                    declared_size
+                    is not None
+                    and declared_size
+                    > MAX_BYTES
                 ):
                     raise ValueError(
                         "Image is larger than 10 MB."
                     )
 
             total = 0
+
             first_bytes = bytearray()
 
             with open(
@@ -282,7 +325,10 @@ def download_once(
                     if not chunk:
                         break
 
-                    if len(first_bytes) < 1024:
+                    if (
+                        len(first_bytes)
+                        < 1024
+                    ):
 
                         needed = (
                             1024
@@ -312,10 +358,11 @@ def download_once(
             )
 
             #
-            # Content-Type'a güvenmiyoruz.
+            # Content-Type header'ına
+            # tek başına güvenmiyoruz.
             #
-            # Gerçek JPEG / PNG / WEBP vs.
-            # byte imzasından kontrol ediliyor.
+            # Gerçek dosya JPEG/PNG/WEBP
+            # vs. ise kabul ediyoruz.
             #
             if not looks_like_image(
                 body_start
@@ -328,7 +375,8 @@ def download_once(
                 raise NonImageResponseError(
                     "URL did not return a usable image. "
                     f"status={status}, "
-                    f"content-type={content_type or 'unknown'}, "
+                    f"content-type="
+                    f"{content_type or 'unknown'}, "
                     f"final-url={final_url}, "
                     f"body-preview={preview!r}"
                 )
@@ -339,14 +387,17 @@ def download_once(
             )
 
             print(
-                f"Downloaded image successfully: "
-                f"{total} bytes -> {output_path}"
+                "Downloaded image successfully: "
+                f"{total} bytes "
+                f"-> {output_path}"
             )
 
     except Exception:
 
         try:
-            os.remove(temp_path)
+            os.remove(
+                temp_path
+            )
         except FileNotFoundError:
             pass
 
@@ -358,6 +409,11 @@ def download(
     output_path: str
 ) -> None:
 
+    print(
+        f"download_image.py "
+        f"version {SCRIPT_VERSION}"
+    )
+
     last_error = None
 
     for attempt in range(
@@ -368,8 +424,9 @@ def download(
         try:
 
             print(
-                f"Image download attempt "
-                f"{attempt}/{MAX_ATTEMPTS}"
+                "Image download attempt "
+                f"{attempt}/"
+                f"{MAX_ATTEMPTS}"
             )
 
             download_once(
@@ -383,12 +440,16 @@ def download(
 
             last_error = exc
 
-            content_type = "unknown"
+            content_type = (
+                "unknown"
+            )
 
             if exc.headers:
-                content_type = exc.headers.get(
-                    "Content-Type",
-                    "unknown"
+                content_type = (
+                    exc.headers.get(
+                        "Content-Type",
+                        "unknown"
+                    )
                 )
 
             preview = ""
@@ -409,8 +470,11 @@ def download(
             )
 
             if (
-                exc.code not in RETRYABLE_HTTP_CODES
-                or attempt == MAX_ATTEMPTS
+                exc.code
+                not in
+                RETRYABLE_HTTP_CODES
+                or attempt
+                == MAX_ATTEMPTS
             ):
                 break
 
@@ -418,23 +482,24 @@ def download(
             urllib.error.URLError,
             TimeoutError,
             socket.timeout,
-            NonImageResponseError
+            NonImageResponseError,
         ) as exc:
 
             last_error = exc
 
             print(
-                f"Temporary image download failure: "
+                "Temporary image "
+                "download failure: "
                 f"{exc}",
                 file=sys.stderr
             )
 
-            if attempt == MAX_ATTEMPTS:
+            if (
+                attempt
+                == MAX_ATTEMPTS
+            ):
                 break
 
-        #
-        # 2s -> 4s -> 8s
-        #
         delay = min(
             2 ** attempt,
             10
@@ -446,15 +511,17 @@ def download(
         )
 
         print(
-            f"Retrying image download "
+            "Retrying image download "
             f"in {delay:.1f}s...",
             file=sys.stderr
         )
 
-        time.sleep(delay)
+        time.sleep(
+            delay
+        )
 
     raise RuntimeError(
-        f"Image download failed after "
+        "Image download failed after "
         f"{MAX_ATTEMPTS} attempts. "
         f"Last error: {last_error}"
     ) from last_error
