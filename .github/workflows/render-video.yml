@@ -97,23 +97,15 @@ jobs:
           fi
 
 
-      - name: Fast Install FFmpeg
+      - name: Setup FFmpeg and FFprobe (Pre-built & Fast)
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+          
+      - name: Download image safely
         shell: bash
         run: |
-          set -euo pipefail
-          echo "Installing FFmpeg directly without full repository update..."
-          
-          # apt-get update yapmadan direkt kuruyoruz, bu sayede saniyeler sürer
-          sudo apt-get install -y ffmpeg ffprobe
-          
-          echo "Verifying installation:"
-          ffmpeg -version | head -n 1
-          ffprobe -version | head -n 1
-          
-          
-                - name: Download image safely
-                  shell: bash
-                  run: |
           set -euo pipefail
 
           mkdir -p assets
