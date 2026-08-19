@@ -97,13 +97,19 @@ jobs:
           fi
 
 
-      - name: Install FFmpeg
+      - name: Check FFmpeg
         shell: bash
         run: |
           set -euo pipefail
 
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
+            echo "FFmpeg already installed."
+            ffmpeg -version | head -n 1
+          else
+            echo "FFmpeg not found. Installing..."
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
 
 
       - name: Download image safely
