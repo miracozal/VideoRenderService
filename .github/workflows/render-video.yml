@@ -93,12 +93,33 @@ jobs:
           sudo apt-get install -y ffmpeg
 
       - name: Download image safely
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p assets
-          python3 scripts/download_image.py "$IMAGE_URL" assets/image
-          file assets/image
+  shell: bash
+  run: |
+    set -euo pipefail
+
+    mkdir -p assets
+
+    echo "Downloading source image..."
+    echo "URL host: $(python3 -c 'import os,urllib.parse; print(urllib.parse.urlparse(os.environ["IMAGE_URL"]).hostname)')"
+
+    python3 scripts/download_image.py "$IMAGE_URL" assets/image
+
+    echo "Downloaded file:"
+    ls -lh assets/image
+    file assets/image
+
+    echo "Validating image with FFprobe..."
+
+    if ! ffprobe \
+      -v error \
+      -select_streams v:0 \
+      -show_entries stream=codec_name,width,height \
+      -of default=noprint_wrappers=1 \
+      assets/image; then
+
+      echo "::error::Downloaded file could not be decoded as an image."
+      exit 1
+    fi
 
       - name: Inspect source image
         shell: bash
