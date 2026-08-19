@@ -97,10 +97,35 @@ jobs:
           fi
 
 
-      - name: Setup FFmpeg and FFprobe (Pre-built & Fast)
-        uses: FedericoCarboni/setup-ffmpeg@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup FFmpeg and FFprobe
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update -qq
+
+          sudo apt-get install -y \
+            --no-install-recommends \
+            ffmpeg \
+            fonts-dejavu-core
+
+          echo "FFmpeg version:"
+          ffmpeg -version
+
+          echo "Checking drawtext support..."
+
+          if ! ffmpeg -hide_banner -filters 2>/dev/null | grep -qE '\bdrawtext\b'; then
+            echo "::error::Installed FFmpeg does not support drawtext."
+            ffmpeg -buildconf
+            exit 1
+          fi
+
+          echo "drawtext filter is available."
+
+          test -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+          test -f /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+
+          echo "Fonts are available."
           
           
       - name: Download image safely
