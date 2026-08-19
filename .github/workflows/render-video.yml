@@ -97,11 +97,16 @@ jobs:
           fi
 
 
-      - name: Verify FFmpeg and FFprobe
+      - name: Fast Install FFmpeg
         shell: bash
         run: |
           set -euo pipefail
-          echo "Checking pre-installed FFmpeg and FFprobe..."
+          echo "Installing FFmpeg directly without full repository update..."
+          
+          # apt-get update yapmadan direkt kuruyoruz, bu sayede saniyeler sürer
+          sudo apt-get install -y ffmpeg ffprobe
+          
+          echo "Verifying installation:"
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
           
