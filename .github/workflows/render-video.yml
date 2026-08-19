@@ -7,41 +7,50 @@ on:
         description: Public HTTP/HTTPS image URL
         required: true
         type: string
+
       market:
         description: Market music selection
         required: true
         type: string
+
       durationSeconds:
         description: Video duration between 3 and 30 seconds
         required: true
         default: "10"
         type: string
+
       requestId:
         description: Unique output identifier
         required: true
         type: string
+
       productName:
         description: Product name used in the Instagram caption
         required: false
         default: ""
         type: string
+
       price:
         description: Optional product price used in the Instagram caption
         required: false
         default: ""
         type: string
 
+
 permissions:
   contents: write
+
 
 concurrency:
   group: github-pages-video-render
   cancel-in-progress: false
 
+
 jobs:
   render:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     env:
       IMAGE_URL: ${{ inputs.imageUrl }}
       MARKET: ${{ inputs.market }}
@@ -51,8 +60,10 @@ jobs:
       PRICE: ${{ inputs.price }}
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
+
 
       - name: Validate inputs
         shell: bash
@@ -85,48 +96,62 @@ jobs:
             exit 1
           fi
 
+
       - name: Install FFmpeg
         shell: bash
         run: |
           set -euo pipefail
+
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
+
       - name: Download image safely
-  shell: bash
-  run: |
-    set -euo pipefail
+        shell: bash
+        run: |
+          set -euo pipefail
 
-    mkdir -p assets
+          mkdir -p assets
 
-    echo "Downloading source image..."
-    echo "URL host: $(python3 -c 'import os,urllib.parse; print(urllib.parse.urlparse(os.environ["IMAGE_URL"]).hostname)')"
+          echo "Downloading source image..."
 
-    python3 scripts/download_image.py "$IMAGE_URL" assets/image
+          python3 - <<'PY'
+          import os
+          import urllib.parse
 
-    echo "Downloaded file:"
-    ls -lh assets/image
-    file assets/image
+          url = os.environ["IMAGE_URL"]
+          parsed = urllib.parse.urlparse(url)
 
-    echo "Validating image with FFprobe..."
+          print("Image host:", parsed.hostname or "unknown")
+          PY
 
-    if ! ffprobe \
-      -v error \
-      -select_streams v:0 \
-      -show_entries stream=codec_name,width,height \
-      -of default=noprint_wrappers=1 \
-      assets/image; then
+          python3 scripts/download_image.py "$IMAGE_URL" assets/image
 
-      echo "::error::Downloaded file could not be decoded as an image."
-      exit 1
-    fi
+          echo "Downloaded file:"
+          ls -lh assets/image
+          file assets/image
+
+          echo "Validating downloaded image with FFprobe..."
+
+          if ! ffprobe \
+            -v error \
+            -select_streams v:0 \
+            -show_entries stream=codec_name,width,height \
+            -of default=noprint_wrappers=1 \
+            assets/image; then
+
+            echo "::error::Downloaded file could not be decoded as an image."
+            exit 1
+          fi
+
 
       - name: Inspect source image
         shell: bash
         run: |
           set -euo pipefail
 
-          IMAGE_DIMENSIONS=$(ffprobe -v error \
+          IMAGE_DIMENSIONS=$(ffprobe \
+            -v error \
             -select_streams v:0 \
             -show_entries stream=width,height \
             -of csv=s=x:p=0 \
@@ -134,18 +159,22 @@ jobs:
 
           IFS=x read -r IMAGE_WIDTH IMAGE_HEIGHT <<< "$IMAGE_DIMENSIONS"
 
-          if [[ ! "$IMAGE_WIDTH" =~ ^[0-9]+$ ]] || [[ ! "$IMAGE_HEIGHT" =~ ^[0-9]+$ ]]; then
+          if [[ ! "$IMAGE_WIDTH" =~ ^[0-9]+$ ]] ||
+             [[ ! "$IMAGE_HEIGHT" =~ ^[0-9]+$ ]]; then
+
             echo "Could not determine source image dimensions."
             exit 1
           fi
 
           echo "IMAGE_WIDTH=$IMAGE_WIDTH" >> "$GITHUB_ENV"
           echo "IMAGE_HEIGHT=$IMAGE_HEIGHT" >> "$GITHUB_ENV"
+
           echo "Source image: ${IMAGE_WIDTH}x${IMAGE_HEIGHT}"
 
           if (( IMAGE_WIDTH < 600 || IMAGE_HEIGHT < 600 )); then
             echo "::warning::Source image is only ${IMAGE_WIDTH}x${IMAGE_HEIGHT}. For a sharp Reels video, use an image at least 1080px wide and 1080px high."
           fi
+
 
       - name: Select music by market
         shell: bash
@@ -155,15 +184,32 @@ jobs:
           NORMALIZED_MARKET=$(printf '%s' "$MARKET" | tr '[:upper:]' '[:lower:]')
 
           case "$NORMALIZED_MARKET" in
-            a101) KEYWORD="a101" ;;
-            bim) KEYWORD="bim" ;;
-            sok|şok) KEYWORD="sok" ;;
-            *) KEYWORD="kontraa" ;;
+            a101)
+              KEYWORD="a101"
+              ;;
+            bim)
+              KEYWORD="bim"
+              ;;
+            sok|şok)
+              KEYWORD="sok"
+              ;;
+            *)
+              KEYWORD="kontraa"
+              ;;
           esac
 
-          MUSIC=$(find Assets/Musics -type f -iname "*${KEYWORD}*.mp3" -print -quit)
+          MUSIC=$(find Assets/Musics \
+            -type f \
+            -iname "*${KEYWORD}*.mp3" \
+            -print \
+            -quit)
+
           if [[ -z "$MUSIC" ]]; then
-            MUSIC=$(find Assets/Musics -type f -iname "*.mp3" -print -quit)
+            MUSIC=$(find Assets/Musics \
+              -type f \
+              -iname "*.mp3" \
+              -print \
+              -quit)
           fi
 
           if [[ -z "$MUSIC" ]]; then
@@ -173,6 +219,7 @@ jobs:
 
           echo "MUSIC=$MUSIC" >> "$GITHUB_ENV"
           echo "Selected music: $MUSIC"
+
 
       - name: Prepare social overlay
         shell: bash
@@ -185,8 +232,12 @@ jobs:
           from pathlib import Path
 
           market = os.environ.get("MARKET", "").strip().lower()
-          product = " ".join(os.environ.get("PRODUCT_NAME", "").split())
-          price = " ".join(os.environ.get("PRICE", "").split())
+          product = " ".join(
+              os.environ.get("PRODUCT_NAME", "").split()
+          )
+          price = " ".join(
+              os.environ.get("PRICE", "").split()
+          )
 
           market_labels = {
               "a101": "A101",
@@ -194,6 +245,7 @@ jobs:
               "sok": "ŞOK",
               "şok": "ŞOK",
           }
+
           accent_colors = {
               "a101": "0xE31E24",
               "bim": "0xF2C300",
@@ -207,30 +259,60 @@ jobs:
               placeholder="…",
               break_long_words=False,
               break_on_hyphens=False,
-          ).fill(product or "Öne çıkan kampanyalı ürün")
+          ).fill(
+              product or "Öne çıkan kampanyalı ürün"
+          )
 
           assets = Path("assets")
           assets.mkdir(exist_ok=True)
-          (assets / "market.txt").write_text(
-              market_labels.get(market, "MARKET FIRSATI"), encoding="utf-8")
-          (assets / "product_name.txt").write_text(
-              wrapped_product, encoding="utf-8")
-          (assets / "price.txt").write_text(
-              price or "Güncel fiyatı inceleyin", encoding="utf-8")
 
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
-              env_file.write(f"ACCENT_COLOR={accent_colors.get(market, '0x20C997')}\n")
+          (assets / "market.txt").write_text(
+              market_labels.get(
+                  market,
+                  "MARKET FIRSATI"
+              ),
+              encoding="utf-8",
+          )
+
+          (assets / "product_name.txt").write_text(
+              wrapped_product,
+              encoding="utf-8",
+          )
+
+          (assets / "price.txt").write_text(
+              price or "Güncel fiyatı inceleyin",
+              encoding="utf-8",
+          )
+
+          accent_color = accent_colors.get(
+              market,
+              "0x20C997"
+          )
+
+          with open(
+              os.environ["GITHUB_ENV"],
+              "a",
+              encoding="utf-8",
+          ) as env_file:
+              env_file.write(
+                  f"ACCENT_COLOR={accent_color}\n"
+              )
           PY
+
 
       - name: Render Reels video
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p public/videos public/manifests
+
+          mkdir -p public/videos
+          mkdir -p public/manifests
 
           OUTPUT_FILE="public/videos/$REQUEST_ID.mp4"
 
-          timeout 180s ffmpeg -nostdin -y \
+          timeout 180s ffmpeg \
+            -nostdin \
+            -y \
             -loop 1 \
             -framerate 30 \
             -i assets/image \
@@ -252,66 +334,101 @@ jobs:
             -movflags +faststart \
             "$OUTPUT_FILE"
 
-          ffprobe -v error \
+          echo "Rendered video:"
+
+          ffprobe \
+            -v error \
             -select_streams v:0 \
             -show_entries stream=codec_name,width,height,pix_fmt,r_frame_rate \
             -of default=noprint_wrappers=1 \
             "$OUTPUT_FILE"
 
+
       - name: Create Reels cover
         shell: bash
         run: |
           set -euo pipefail
+
           mkdir -p public/covers
 
-          # Instagram otherwise tends to use the first, still-dark fade frame.
-          # The one-second frame contains the complete product and price card.
-          ffmpeg -nostdin -y \
+          ffmpeg \
+            -nostdin \
+            -y \
             -ss 1 \
             -i "public/videos/$REQUEST_ID.mp4" \
             -frames:v 1 \
             -q:v 2 \
             "public/covers/$REQUEST_ID.jpg"
 
-          ffprobe -v error \
+          echo "Rendered cover:"
+
+          ffprobe \
+            -v error \
             -select_streams v:0 \
             -show_entries stream=codec_name,width,height \
             -of default=noprint_wrappers=1 \
             "public/covers/$REQUEST_ID.jpg"
+
 
       - name: Create manifest
         shell: bash
         env:
           VIDEO_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/videos/${{ inputs.requestId }}.mp4
           COVER_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/covers/${{ inputs.requestId }}.jpg
+
         run: |
           set -euo pipefail
 
-          case "$(printf '%s' "$MARKET" | tr '[:upper:]' '[:lower:]')" in
+          NORMALIZED_MARKET=$(printf '%s' "$MARKET" | tr '[:upper:]' '[:lower:]')
+
+          case "$NORMALIZED_MARKET" in
+
             a101)
               MARKET_LABEL="A101"
               HASHTAGS="#A101 #AldınAldın #İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
               ;;
+
             bim)
               MARKET_LABEL="BİM"
               HASHTAGS="#BİM #İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
               ;;
+
             sok|şok)
               MARKET_LABEL="ŞOK"
               HASHTAGS="#ŞOK #İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
               ;;
+
             *)
               MARKET_LABEL="${MARKET:-Market}"
               HASHTAGS="#İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
               ;;
+
           esac
 
           if [[ -n "$PRODUCT_NAME" && -n "$PRICE" ]]; then
-            CAPTION=$(printf "✨ Günün Öne Çıkan Fırsatı\n\n🛒 %s\n%s\n✨ Fiyat: %s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\nBeğendiysen kaydetmeyi ve alışveriş listene eklemeyi unutma.\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$PRICE" "$HASHTAGS")
+
+            CAPTION=$(printf \
+              "✨ Günün Öne Çıkan Fırsatı\n\n🛒 %s\n%s\n✨ Fiyat: %s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\nBeğendiysen kaydetmeyi ve alışveriş listene eklemeyi unutma.\n\n#İndirimServisi %s" \
+              "$MARKET_LABEL" \
+              "$PRODUCT_NAME" \
+              "$PRICE" \
+              "$HASHTAGS")
+
           elif [[ -n "$PRODUCT_NAME" ]]; then
-            CAPTION=$(printf "✨ Günün Öne Çıkan Fırsatı\n\n🛒 %s\n%s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$HASHTAGS")
+
+            CAPTION=$(printf \
+              "✨ Günün Öne Çıkan Fırsatı\n\n🛒 %s\n%s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\n#İndirimServisi %s" \
+              "$MARKET_LABEL" \
+              "$PRODUCT_NAME" \
+              "$HASHTAGS")
+
           else
-            CAPTION=$(printf "✨ %s için öne çıkan fırsat\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\n#İndirimServisi %s" "$MARKET_LABEL" "$HASHTAGS")
+
+            CAPTION=$(printf \
+              "✨ %s için öne çıkan fırsat\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\n#İndirimServisi %s" \
+              "$MARKET_LABEL" \
+              "$HASHTAGS")
+
           fi
 
           jq -n \
@@ -325,8 +442,23 @@ jobs:
             --argjson sourceWidth "$IMAGE_WIDTH" \
             --argjson sourceHeight "$IMAGE_HEIGHT" \
             --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{requestId: $requestId, videoUrl: $videoUrl, coverUrl: $coverUrl, market: $market, productName: $productName, price: $price, caption: $caption, sourceWidth: $sourceWidth, sourceHeight: $sourceHeight, createdAt: $createdAt}' \
+            '{
+              requestId: $requestId,
+              videoUrl: $videoUrl,
+              coverUrl: $coverUrl,
+              market: $market,
+              productName: $productName,
+              price: $price,
+              caption: $caption,
+              sourceWidth: $sourceWidth,
+              sourceHeight: $sourceHeight,
+              createdAt: $createdAt
+            }' \
             > "public/manifests/$REQUEST_ID.json"
+
+          echo "Manifest created:"
+          cat "public/manifests/$REQUEST_ID.json"
+
 
       - name: Deploy GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
