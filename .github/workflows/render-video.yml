@@ -97,13 +97,13 @@ jobs:
           fi
 
 
-          - name: Verify FFmpeg and FFprobe
-                  shell: bash
-                  run: |
-                    set -euo pipefail
-                    echo "Checking pre-installed FFmpeg and FFprobe..."
-                    ffmpeg -version | head -n 1
-                    ffprobe -version | head -n 1
+      - name: Verify FFmpeg and FFprobe
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Checking pre-installed FFmpeg and FFprobe..."
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
           
           
                 - name: Download image safely
