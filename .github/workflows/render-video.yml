@@ -26,7 +26,32 @@ on:
         default: ""
         type: string
       price:
-        description: Optional product price used in the Instagram caption
+        description: Current product price (kept for backward compatibility)
+        required: false
+        default: ""
+        type: string
+      currentPrice:
+        description: Current selling price
+        required: false
+        default: ""
+        type: string
+      originalPrice:
+        description: Original price when a verified discount exists
+        required: false
+        default: ""
+        type: string
+      discountAmount:
+        description: Customer savings amount
+        required: false
+        default: ""
+        type: string
+      discountPercent:
+        description: Verified discount percentage
+        required: false
+        default: ""
+        type: string
+      quantity:
+        description: Optional package quantity
         required: false
         default: ""
         type: string
@@ -49,6 +74,11 @@ jobs:
       REQUEST_ID: ${{ inputs.requestId }}
       PRODUCT_NAME: ${{ inputs.productName }}
       PRICE: ${{ inputs.price }}
+      CURRENT_PRICE: ${{ inputs.currentPrice }}
+      ORIGINAL_PRICE: ${{ inputs.originalPrice }}
+      DISCOUNT_AMOUNT: ${{ inputs.discountAmount }}
+      DISCOUNT_PERCENT: ${{ inputs.discountPercent }}
+      QUANTITY: ${{ inputs.quantity }}
 
     steps:
       - name: Checkout
@@ -85,12 +115,26 @@ jobs:
             exit 1
           fi
 
+          if (( ${#CURRENT_PRICE} > 30 )) ||
+             (( ${#ORIGINAL_PRICE} > 30 )) ||
+             (( ${#DISCOUNT_AMOUNT} > 30 )) ||
+             (( ${#DISCOUNT_PERCENT} > 10 )) ||
+             (( ${#QUANTITY} > 50 )); then
+            echo "One or more price presentation inputs are too long."
+            exit 1
+          fi
+
       - name: Install FFmpeg
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg fonts-noto-core
+
+          REGULAR_FONT=$(fc-match -f '%{file}' 'Noto Sans')
+          BOLD_FONT=$(fc-match -f '%{file}' 'Noto Sans:style=Bold')
+          echo "FONT_REGULAR=$REGULAR_FONT" >> "$GITHUB_ENV"
+          echo "FONT_BOLD=$BOLD_FONT" >> "$GITHUB_ENV"
 
       - name: Download image safely
         shell: bash
@@ -157,49 +201,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          python3 - <<'PY'
-          import os
-          import textwrap
-          from pathlib import Path
-
-          market = os.environ.get("MARKET", "").strip().lower()
-          product = " ".join(os.environ.get("PRODUCT_NAME", "").split())
-          price = " ".join(os.environ.get("PRICE", "").split())
-
-          market_labels = {
-              "a101": "A101",
-              "bim": "BİM",
-              "sok": "ŞOK",
-              "şok": "ŞOK",
-          }
-          accent_colors = {
-              "a101": "0xE31E24",
-              "bim": "0xF2C300",
-              "sok": "0xF5C400",
-              "şok": "0xF5C400",
-          }
-
-          wrapped_product = textwrap.TextWrapper(
-              width=29,
-              max_lines=3,
-              placeholder="…",
-              break_long_words=False,
-              break_on_hyphens=False,
-          ).fill(product or "Öne çıkan kampanyalı ürün")
-
-          assets = Path("assets")
-          assets.mkdir(exist_ok=True)
-          (assets / "market.txt").write_text(
-              market_labels.get(market, "MARKET FIRSATI"), encoding="utf-8")
-          (assets / "product_name.txt").write_text(
-              wrapped_product, encoding="utf-8")
-          (assets / "price.txt").write_text(
-              price or "Güncel fiyatı inceleyin", encoding="utf-8")
-
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
-              env_file.write(f"ACCENT_COLOR={accent_colors.get(market, '0x20C997')}\n")
-          PY
+          python3 scripts/prepare_overlay.py
 
       - name: Render Reels video
         shell: bash
@@ -215,9 +217,9 @@ jobs:
             -i assets/image \
             -i "$MUSIC" \
             -t "$DURATION_SECONDS" \
-            -filter_complex "[0:v]scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,gblur=sigma=38,eq=brightness=-0.42:saturation=0.72[background];[background]drawbox=x=0:y=0:w=1080:h=1920:color=0x07111F@0.62:t=fill,drawbox=x=70:y=430:w=940:h=900:color=white@0.98:t=fill,drawbox=x=70:y=430:w=940:h=12:color=${ACCENT_COLOR}:t=fill[base];[0:v]scale=820:790:force_original_aspect_ratio=decrease:flags=lanczos,unsharp=5:5:0.55:5:5:0.0,pad=860:820:(ow-iw)/2:(oh-ih)/2:color=white[product];[base][product]overlay=(W-w)/2:475:shortest=1,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='İNDİRİM SERVİSİ':fontcolor=white:fontsize=36:x=70:y=92:box=1:boxcolor=0xFFFFFF@0.12:boxborderw=18,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GÜNÜN ÖNE ÇIKAN FIRSATI':fontcolor=white:fontsize=55:x=70:y=205,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile=assets/market.txt:fontcolor=${ACCENT_COLOR}:fontsize=48:x=70:y=305,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile=assets/product_name.txt:fontcolor=white:fontsize=45:line_spacing=14:x=(w-text_w)/2:y=1370,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:textfile=assets/price.txt:fontcolor=0x07111F:fontsize=68:x=(w-text_w)/2:y=1585:box=1:boxcolor=${ACCENT_COLOR}@0.98:boxborderw=24,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='Kampanya ve stok bilgileri mağazaya göre değişebilir.':fontcolor=white@0.84:fontsize=27:x=(w-text_w)/2:y=1792,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='indirimservisi.com':fontcolor=white:fontsize=34:x=(w-text_w)/2:y=1845,fade=t=in:st=0:d=0.45,fade=t=out:st=9.4:d=0.6,format=yuv420p[v]" \
+            -filter_complex_script assets/filter_complex.txt \
             -map "[v]" \
-            -map 1:a \
+            -map "[a]" \
             -r 30 \
             -c:v libx264 \
             -preset medium \
@@ -279,18 +281,38 @@ jobs:
               MARKET_LABEL="ŞOK"
               HASHTAGS="#ŞOK #İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
               ;;
+            migros)
+              MARKET_LABEL="Migros"
+              HASHTAGS="#Migros #İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
+              ;;
+            trendyol)
+              MARKET_LABEL="Trendyol"
+              HASHTAGS="#Trendyol #İndirim #Fırsat #OnlineAlışveriş"
+              ;;
+            hepsiburada)
+              MARKET_LABEL="Hepsiburada"
+              HASHTAGS="#Hepsiburada #İndirim #Fırsat #OnlineAlışveriş"
+              ;;
+            gratis)
+              MARKET_LABEL="Gratis"
+              HASHTAGS="#Gratis #İndirim #Fırsat #KişiselBakım"
+              ;;
             *)
               MARKET_LABEL="${MARKET:-Market}"
               HASHTAGS="#İndirim #Fırsat #AktüelÜrünler #MarketFırsatları"
               ;;
           esac
 
-          if [[ -n "$PRODUCT_NAME" && -n "$PRICE" ]]; then
-            CAPTION=$(printf "✨ Günün Öne Çıkan Fırsatı\n\n🛒 %s\n%s\n✨ Fiyat: %s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\nBeğendiysen kaydetmeyi ve alışveriş listene eklemeyi unutma.\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$PRICE" "$HASHTAGS")
+          DISPLAY_PRICE="${CURRENT_PRICE:-$PRICE}"
+
+          if [[ -n "$PRODUCT_NAME" && -n "$ORIGINAL_PRICE" && -n "$DISCOUNT_AMOUNT" && -n "$DISCOUNT_PERCENT" ]]; then
+            CAPTION=$(printf "✨ Günün Fırsatı\n\n🛒 %s\n%s\n🏷️ Normal fiyat: %s\n✨ İndirimli fiyat: %s\n💰 Tasarruf: %s (%s)\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\nBeğendiysen kaydetmeyi ve alışveriş listene eklemeyi unutma.\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$ORIGINAL_PRICE" "$DISPLAY_PRICE" "$DISCOUNT_AMOUNT" "$DISCOUNT_PERCENT" "$HASHTAGS")
+          elif [[ -n "$PRODUCT_NAME" && -n "$DISPLAY_PRICE" ]]; then
+            CAPTION=$(printf "✨ Günün Fırsatı\n\n🛒 %s\n%s\n✨ Güncel fiyat: %s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\nBeğendiysen kaydetmeyi ve alışveriş listene eklemeyi unutma.\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$DISPLAY_PRICE" "$HASHTAGS")
           elif [[ -n "$PRODUCT_NAME" ]]; then
-            CAPTION=$(printf "✨ Günün Öne Çıkan Fırsatı\n\n🛒 %s\n%s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$HASHTAGS")
+            CAPTION=$(printf "✨ Günün Fırsatı\n\n🛒 %s\n%s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$HASHTAGS")
           else
-            CAPTION=$(printf "✨ %s için öne çıkan fırsat\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\n#İndirimServisi %s" "$MARKET_LABEL" "$HASHTAGS")
+            CAPTION=$(printf "✨ %s günün fırsatı\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\n#İndirimServisi %s" "$MARKET_LABEL" "$HASHTAGS")
           fi
 
           jq -n \
@@ -299,12 +321,17 @@ jobs:
             --arg coverUrl "$COVER_URL" \
             --arg market "$MARKET" \
             --arg productName "$PRODUCT_NAME" \
-            --arg price "$PRICE" \
+            --arg price "${CURRENT_PRICE:-$PRICE}" \
+            --arg currentPrice "${CURRENT_PRICE:-$PRICE}" \
+            --arg originalPrice "$ORIGINAL_PRICE" \
+            --arg discountAmount "$DISCOUNT_AMOUNT" \
+            --arg discountPercent "$DISCOUNT_PERCENT" \
+            --arg quantity "$QUANTITY" \
             --arg caption "$CAPTION" \
             --argjson sourceWidth "$IMAGE_WIDTH" \
             --argjson sourceHeight "$IMAGE_HEIGHT" \
             --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{requestId: $requestId, videoUrl: $videoUrl, coverUrl: $coverUrl, market: $market, productName: $productName, price: $price, caption: $caption, sourceWidth: $sourceWidth, sourceHeight: $sourceHeight, createdAt: $createdAt}' \
+            '{requestId: $requestId, videoUrl: $videoUrl, coverUrl: $coverUrl, market: $market, productName: $productName, price: $price, currentPrice: $currentPrice, originalPrice: $originalPrice, discountAmount: $discountAmount, discountPercent: $discountPercent, quantity: $quantity, caption: $caption, sourceWidth: $sourceWidth, sourceHeight: $sourceHeight, createdAt: $createdAt}' \
             > "public/manifests/$REQUEST_ID.json"
 
       - name: Deploy GitHub Pages
