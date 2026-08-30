@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import json
 import re
 import textwrap
 from pathlib import Path
@@ -34,6 +35,11 @@ def clean(value: str, limit: int) -> str:
     return " ".join(value.split())[:limit]
 
 
+def shorten_line(value: str, limit: int) -> str:
+    normalized = " ".join(value.split())
+    return normalized if len(normalized) <= limit else normalized[: limit - 1].rstrip() + "…"
+
+
 def write_text(name: str, value: str) -> None:
     (ASSETS / name).write_text(value, encoding="utf-8")
 
@@ -54,6 +60,14 @@ def discount_palette(percentage: int | None) -> tuple[str, str, str]:
     if percentage <= 75:
         return "F2D66B", "453A0C", "6A5915"
     return "E76F73", "FFFFFF", "FFE2E3"
+
+
+def market_theme(value: str) -> tuple[str, str, str]:
+    normalized = clean(value, 30).lower()
+    return THEMES.get(
+        normalized,
+        (clean(value, 20).upper() or "MARKET", "20C997", "FFFFFF"),
+    )
 
 
 def text_filter(
@@ -232,8 +246,185 @@ def build_filter(
     return ";".join([*chains, ",".join(video_filters), audio_filter])
 
 
+def parse_top_discounts() -> list[dict[str, str]]:
+    raw = os.environ.get("TOP_DISCOUNTS_JSON", "")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("TOP_DISCOUNTS_JSON must contain valid JSON.") from exc
+
+    if not isinstance(parsed, list) or not 1 <= len(parsed) <= 10:
+        raise ValueError("The daily discount list must contain between 1 and 10 items.")
+
+    items: list[dict[str, str]] = []
+    limits = {
+        "productName": 150,
+        "market": 30,
+        "currentPrice": 30,
+        "originalPrice": 30,
+        "discountAmount": 30,
+        "discountPercent": 10,
+    }
+    for index, source in enumerate(parsed, start=1):
+        if not isinstance(source, dict):
+            raise ValueError(f"Daily discount item {index} must be an object.")
+
+        item = {name: clean(str(source.get(name, "")), limit) for name, limit in limits.items()}
+        if not all(item.values()):
+            raise ValueError(f"Daily discount item {index} has missing display fields.")
+
+        item["rank"] = str(index)
+        items.append(item)
+
+    return items
+
+
+def build_top_discounts_filter(
+    items: list[dict[str, str]],
+    list_date: str,
+    fade_out_start: float,
+) -> str:
+    write_text("top_brand.txt", "İNDİRİM SERVİSİ")
+    write_text("top_title.txt", f"GÜNÜN EN YÜKSEK {len(items)} İNDİRİMİ")
+    write_text(
+        "top_subtitle.txt",
+        f"{list_date}  •  {len(items)} ürün, tek listede" if list_date else f"{len(items)} ürün, tek listede",
+    )
+    write_text(
+        "top_footer.txt",
+        "Fiyat ve stok bilgileri değişebilir; alışveriş öncesi marketten kontrol ediniz.",
+    )
+    write_text("top_website.txt", "indirimservisi.com")
+
+    video_filters = [
+        "[0:v]format=rgba",
+        "drawbox=x=0:y=0:w=1080:h=1920:color=0xEEF2F3@1:t=fill",
+        "drawbox=x=0:y=0:w=1080:h=18:color=0x20C997@1:t=fill",
+        "drawbox=x=62:y=63:w=10:h=174:color=0x20C997@1:t=fill",
+        text_filter("top_brand.txt", color="0x54606B", size=27, x="92", y=69, bold=True),
+        text_filter("top_title.txt", color="0x172128", size=49, x="90", y=119, bold=True),
+        text_filter("top_subtitle.txt", color="0x66737E", size=25, x="92", y=193, bold=True),
+    ]
+
+    row_start = 274
+    row_step = 149
+    row_height = 134
+
+    for index, item in enumerate(items):
+        row_y = row_start + index * row_step
+        market_label, market_accent, market_text = market_theme(item["market"])
+        badge_background, badge_text, _ = discount_palette(
+            parse_discount_percent(item["discountPercent"])
+        )
+
+        prefix = f"top_{index + 1}"
+        product_name = shorten_line(item["productName"], 43)
+        write_text(f"{prefix}_rank.txt", item["rank"])
+        write_text(f"{prefix}_product.txt", product_name)
+        write_text(f"{prefix}_market.txt", market_label)
+        write_text(f"{prefix}_old.txt", f"Eski  {item['originalPrice']}")
+        write_text(f"{prefix}_current.txt", f"İndirimli  {item['currentPrice']}")
+        write_text(
+            f"{prefix}_discount.txt",
+            f"{item['discountAmount']}  •  {item['discountPercent']} İNDİRİM",
+        )
+
+        old_line_width = min(190, max(118, len(f"Eski  {item['originalPrice']}") * 12))
+        video_filters.extend(
+            [
+                f"drawbox=x=68:y={row_y + 7}:w=944:h={row_height}:color=0x1C2730@0.09:t=fill",
+                f"drawbox=x=62:y={row_y}:w=944:h={row_height}:color=white@1:t=fill",
+                f"drawbox=x=62:y={row_y}:w=7:h={row_height}:color=0x{market_accent}@1:t=fill",
+                f"drawbox=x=82:y={row_y + 19}:w=49:h=49:color=0x{badge_background}@1:t=fill",
+                text_filter(
+                    f"{prefix}_rank.txt",
+                    color=f"0x{badge_text}",
+                    size=25,
+                    x="106-text_w/2",
+                    y=row_y + 28,
+                    bold=True,
+                ),
+                text_filter(
+                    f"{prefix}_product.txt",
+                    color="0x1D2830",
+                    size=28,
+                    x="151",
+                    y=row_y + 16,
+                    bold=True,
+                ),
+                f"drawbox=x=812:y={row_y + 13}:w=172:h=43:color=0x{market_accent}@1:t=fill",
+                text_filter(
+                    f"{prefix}_market.txt",
+                    color=f"0x{market_text}",
+                    size=20,
+                    x="898-text_w/2",
+                    y=row_y + 23,
+                    bold=True,
+                ),
+                text_filter(
+                    f"{prefix}_old.txt",
+                    color="0x7B858E",
+                    size=21,
+                    x="151",
+                    y=row_y + 75,
+                    bold=True,
+                ),
+                f"drawbox=x=151:y={row_y + 88}:w={old_line_width}:h=2:color=0x7B858E@0.9:t=fill",
+                text_filter(
+                    f"{prefix}_current.txt",
+                    color="0x172128",
+                    size=27,
+                    x="346",
+                    y=row_y + 69,
+                    bold=True,
+                ),
+                f"drawbox=x=650:y={row_y + 71}:w=334:h=42:color=0x{badge_background}@1:t=fill",
+                text_filter(
+                    f"{prefix}_discount.txt",
+                    color=f"0x{badge_text}",
+                    size=19,
+                    x="817-text_w/2",
+                    y=row_y + 81,
+                    bold=True,
+                ),
+            ]
+        )
+
+    video_filters.extend(
+        [
+            text_filter("top_footer.txt", color="0x5F6C76", size=22, x="66", y=1806, bold=True),
+            text_filter("top_website.txt", color="0x172128", size=29, x="66", y=1846, bold=True),
+            f"fade=t=in:st=0:d=0.38,fade=t=out:st={fade_out_start:.2f}:d=0.55,format=yuv420p[v]",
+        ]
+    )
+    audio_filter = (
+        f"[1:a]afade=t=in:st=0:d=0.25,"
+        f"afade=t=out:st={fade_out_start:.2f}:d=0.55[a]"
+    )
+    return ";".join([",".join(video_filters), audio_filter])
+
+
 def main() -> None:
     ASSETS.mkdir(exist_ok=True)
+
+    duration = int(os.environ.get("DURATION_SECONDS", "10"))
+    fade_out_start = max(0.4, duration - 0.6)
+    render_mode = clean(os.environ.get("RENDER_MODE", "product"), 30).lower()
+
+    if render_mode == "daily-top-ten":
+        items = parse_top_discounts()
+        list_date = clean(os.environ.get("LIST_DATE", ""), 20)
+        (ASSETS / "filter_complex.txt").write_text(
+            build_top_discounts_filter(items, list_date, fade_out_start),
+            encoding="utf-8",
+        )
+
+        github_env = os.environ.get("GITHUB_ENV")
+        if github_env:
+            with open(github_env, "a", encoding="utf-8") as env_file:
+                env_file.write("ACCENT_COLOR=0x20C997\n")
+                env_file.write("HAS_DISCOUNT=true\n")
+        return
 
     market = clean(os.environ.get("MARKET", ""), 30).lower()
     product = clean(os.environ.get("PRODUCT_NAME", ""), 150)
@@ -244,7 +435,6 @@ def main() -> None:
     original_price = clean(os.environ.get("ORIGINAL_PRICE", ""), 30)
     discount_amount = clean(os.environ.get("DISCOUNT_AMOUNT", ""), 30)
     discount_percent = clean(os.environ.get("DISCOUNT_PERCENT", ""), 10)
-    duration = int(os.environ.get("DURATION_SECONDS", "10"))
 
     market_label, accent, market_text = THEMES.get(
         market, ("MARKET FIRSATI", "20C997", "FFFFFF")
@@ -283,7 +473,6 @@ def main() -> None:
     )
     write_text("website.txt", "indirimservisi.com")
 
-    fade_out_start = max(0.4, duration - 0.6)
     (ASSETS / "filter_complex.txt").write_text(
         build_filter(
             accent,

@@ -201,12 +201,22 @@ public sealed class VideoRenderer
             "bim" => "bim",
             "şok" => "sok",
             "sok" => "sok",
+            "migros" => "migros",
+            "trendyol" => "trendyol",
+            "hepsiburada" => "hepsiburada",
+            "gratis" => "gratis",
             _ => "kontraa"
         };
 
+        var marketTrack = files.FirstOrDefault(x =>
+            Path.GetFileName(x).Contains(keyword, StringComparison.OrdinalIgnoreCase));
+        if (marketTrack != null)
+            return marketTrack;
+
         return files.FirstOrDefault(x =>
-            Path.GetFileName(x).Contains(keyword, StringComparison.OrdinalIgnoreCase))
-            ?? files.First();
+                   Path.GetFileName(x).Contains("kontraa", StringComparison.OrdinalIgnoreCase))
+               ?? throw new InvalidOperationException(
+                   "Markete özel MP3 ve genel müzik yedeği bulunamadı.");
     }
 
     private static async Task RunFfmpegAsync(

@@ -3,9 +3,15 @@ name: Render Video
 on:
   workflow_dispatch:
     inputs:
+      renderMode:
+        description: product or daily-top-ten
+        required: false
+        default: "product"
+        type: string
       imageUrl:
         description: Public HTTP/HTTPS image URL
-        required: true
+        required: false
+        default: ""
         type: string
       market:
         description: Market music selection
@@ -55,6 +61,16 @@ on:
         required: false
         default: ""
         type: string
+      listDate:
+        description: Display date for a daily discount list
+        required: false
+        default: ""
+        type: string
+      topDiscountsJson:
+        description: JSON array containing up to ten daily discount rows
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -68,6 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
+      RENDER_MODE: ${{ inputs.renderMode }}
       IMAGE_URL: ${{ inputs.imageUrl }}
       MARKET: ${{ inputs.market }}
       DURATION_SECONDS: ${{ inputs.durationSeconds }}
@@ -79,6 +96,8 @@ jobs:
       DISCOUNT_AMOUNT: ${{ inputs.discountAmount }}
       DISCOUNT_PERCENT: ${{ inputs.discountPercent }}
       QUANTITY: ${{ inputs.quantity }}
+      LIST_DATE: ${{ inputs.listDate }}
+      TOP_DISCOUNTS_JSON: ${{ inputs.topDiscountsJson }}
 
     steps:
       - name: Checkout
@@ -97,6 +116,20 @@ jobs:
 
           if [[ ! "$REQUEST_ID" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; then
             echo "requestId may only contain letters, numbers, underscores and hyphens."
+            exit 1
+          fi
+
+          if [[ "$RENDER_MODE" != "product" && "$RENDER_MODE" != "daily-top-ten" ]]; then
+            echo "renderMode must be product or daily-top-ten."
+            exit 1
+          fi
+
+          if [[ "$RENDER_MODE" == "daily-top-ten" ]]; then
+            python3 -c 'import json, os; items=json.loads(os.environ.get("TOP_DISCOUNTS_JSON", "")); assert isinstance(items, list) and 1 <= len(items) <= 10, "topDiscountsJson must contain between 1 and 10 items."'
+            echo "IMAGE_WIDTH=1080" >> "$GITHUB_ENV"
+            echo "IMAGE_HEIGHT=1920" >> "$GITHUB_ENV"
+          elif [[ -z "$IMAGE_URL" ]]; then
+            echo "imageUrl is required for product renders."
             exit 1
           fi
 
@@ -137,6 +170,7 @@ jobs:
           echo "FONT_BOLD=$BOLD_FONT" >> "$GITHUB_ENV"
 
       - name: Download image safely
+        if: ${{ inputs.renderMode != 'daily-top-ten' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -145,6 +179,7 @@ jobs:
           file assets/image
 
       - name: Inspect source image
+        if: ${{ inputs.renderMode != 'daily-top-ten' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -175,22 +210,30 @@ jobs:
         run: |
           set -euo pipefail
 
-          NORMALIZED_MARKET=$(printf '%s' "$MARKET" | tr '[:upper:]' '[:lower:]')
+          if [[ "$RENDER_MODE" == "daily-top-ten" ]]; then
+            NORMALIZED_MARKET="mixed"
+          else
+            NORMALIZED_MARKET=$(printf '%s' "$MARKET" | tr '[:upper:]' '[:lower:]')
+          fi
 
           case "$NORMALIZED_MARKET" in
             a101) KEYWORD="a101" ;;
             bim) KEYWORD="bim" ;;
             sok|şok) KEYWORD="sok" ;;
+            migros) KEYWORD="migros" ;;
+            trendyol) KEYWORD="trendyol" ;;
+            hepsiburada) KEYWORD="hepsiburada" ;;
+            gratis) KEYWORD="gratis" ;;
             *) KEYWORD="kontraa" ;;
           esac
 
           MUSIC=$(find Assets/Musics -type f -iname "*${KEYWORD}*.mp3" -print -quit)
           if [[ -z "$MUSIC" ]]; then
-            MUSIC=$(find Assets/Musics -type f -iname "*.mp3" -print -quit)
+            MUSIC=$(find Assets/Musics -type f -iname "*kontraa*.mp3" -print -quit)
           fi
 
           if [[ -z "$MUSIC" ]]; then
-            echo "No MP3 file was found."
+            echo "No matching market MP3 or generic fallback MP3 was found."
             exit 1
           fi
 
@@ -211,10 +254,14 @@ jobs:
 
           OUTPUT_FILE="public/videos/$REQUEST_ID.mp4"
 
+          if [[ "$RENDER_MODE" == "daily-top-ten" ]]; then
+            VIDEO_INPUT=(-f lavfi -i "color=c=0xEEF2F3:s=1080x1920:r=30")
+          else
+            VIDEO_INPUT=(-loop 1 -framerate 30 -i assets/image)
+          fi
+
           timeout 180s ffmpeg -nostdin -y \
-            -loop 1 \
-            -framerate 30 \
-            -i assets/image \
+            "${VIDEO_INPUT[@]}" \
             -i "$MUSIC" \
             -t "$DURATION_SECONDS" \
             -filter_complex_script assets/filter_complex.txt \
@@ -305,7 +352,10 @@ jobs:
 
           DISPLAY_PRICE="${CURRENT_PRICE:-$PRICE}"
 
-          if [[ -n "$PRODUCT_NAME" && -n "$ORIGINAL_PRICE" && -n "$DISCOUNT_AMOUNT" && -n "$DISCOUNT_PERCENT" ]]; then
+          if [[ "$RENDER_MODE" == "daily-top-ten" ]]; then
+            PRODUCT_COUNT=$(jq 'length' <<< "$TOP_DISCOUNTS_JSON")
+            CAPTION=$(printf "🔥 Günün En Yüksek %s İndirimi\n\nTüm ürünler, fiyatlar ve indirim detayları tek Reels'te.\n\nFiyat ve stok bilgileri değişebilir; alışveriş öncesi marketten kontrol ediniz.\nListenin tamamı: indirimservisi.com/gunun-en-yuksek-indirimleri\n\n#İndirimServisi #Gününİndirimi #İndirim #Fırsat" "$PRODUCT_COUNT")
+          elif [[ -n "$PRODUCT_NAME" && -n "$ORIGINAL_PRICE" && -n "$DISCOUNT_AMOUNT" && -n "$DISCOUNT_PERCENT" ]]; then
             CAPTION=$(printf "✨ Günün Fırsatı\n\n🛒 %s\n%s\n🏷️ Normal fiyat: %s\n✨ İndirimli fiyat: %s\n💰 Tasarruf: %s (%s)\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\nBeğendiysen kaydetmeyi ve alışveriş listene eklemeyi unutma.\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$ORIGINAL_PRICE" "$DISPLAY_PRICE" "$DISCOUNT_AMOUNT" "$DISCOUNT_PERCENT" "$HASHTAGS")
           elif [[ -n "$PRODUCT_NAME" && -n "$DISPLAY_PRICE" ]]; then
             CAPTION=$(printf "✨ Günün Fırsatı\n\n🛒 %s\n%s\n✨ Güncel fiyat: %s\n\nKampanya ve stok bilgileri mağazaya göre değişebilir.\nGüncel fırsatlar: indirimservisi.com\n\nBeğendiysen kaydetmeyi ve alışveriş listene eklemeyi unutma.\n\n#İndirimServisi %s" "$MARKET_LABEL" "$PRODUCT_NAME" "$DISPLAY_PRICE" "$HASHTAGS")
@@ -327,11 +377,13 @@ jobs:
             --arg discountAmount "$DISCOUNT_AMOUNT" \
             --arg discountPercent "$DISCOUNT_PERCENT" \
             --arg quantity "$QUANTITY" \
+            --arg renderMode "$RENDER_MODE" \
+            --arg listDate "$LIST_DATE" \
             --arg caption "$CAPTION" \
             --argjson sourceWidth "$IMAGE_WIDTH" \
             --argjson sourceHeight "$IMAGE_HEIGHT" \
             --arg createdAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{requestId: $requestId, videoUrl: $videoUrl, coverUrl: $coverUrl, market: $market, productName: $productName, price: $price, currentPrice: $currentPrice, originalPrice: $originalPrice, discountAmount: $discountAmount, discountPercent: $discountPercent, quantity: $quantity, caption: $caption, sourceWidth: $sourceWidth, sourceHeight: $sourceHeight, createdAt: $createdAt}' \
+            '{requestId: $requestId, videoUrl: $videoUrl, coverUrl: $coverUrl, renderMode: $renderMode, listDate: $listDate, market: $market, productName: $productName, price: $price, currentPrice: $currentPrice, originalPrice: $originalPrice, discountAmount: $discountAmount, discountPercent: $discountPercent, quantity: $quantity, caption: $caption, sourceWidth: $sourceWidth, sourceHeight: $sourceHeight, createdAt: $createdAt}' \
             > "public/manifests/$REQUEST_ID.json"
 
       - name: Deploy GitHub Pages
